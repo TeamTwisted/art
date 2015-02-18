@@ -14,6 +14,9 @@
 # limitations under the License.
 #
 
+# Disable Clang
+WITHOUT_CLANG=true
+
 LOCAL_PATH := $(call my-dir)
 
 art_path := $(LOCAL_PATH)

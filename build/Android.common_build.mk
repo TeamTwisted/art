@@ -29,9 +29,9 @@ include art/build/Android.common.mk
 # Beware that tests may use the non-debug build for performance, notable 055-enum-performance
 #
 ART_BUILD_TARGET_NDEBUG ?= true
-ART_BUILD_TARGET_DEBUG ?= true
+ART_BUILD_TARGET_DEBUG ?= false
 ART_BUILD_HOST_NDEBUG ?= true
-ART_BUILD_HOST_DEBUG ?= true
+ART_BUILD_HOST_DEBUG ?= false
 
 ifeq ($(ART_BUILD_TARGET_NDEBUG),false)
 $(info Disabling ART_BUILD_TARGET_NDEBUG)
@@ -86,7 +86,7 @@ endif
 #
 # Used to enable optimizing compiler
 #
-ART_USE_OPTIMIZING_COMPILER := false
+ART_USE_OPTIMIZING_COMPILER := true
 ifneq ($(wildcard art/USE_OPTIMIZING_COMPILER),)
 $(info Enabling ART_USE_OPTIMIZING_COMPILER because of existence of art/USE_OPTIMIZING_COMPILER)
 ART_USE_OPTIMIZING_COMPILER := true
@@ -116,18 +116,14 @@ endif
 
 # Host.
 ART_HOST_CLANG := false
-ifneq ($(WITHOUT_HOST_CLANG),true)
-  # By default, host builds use clang for better warnings.
-  ART_HOST_CLANG := true
-endif
 
 # Clang on the target. Target builds use GCC by default.
-ART_TARGET_CLANG :=
-ART_TARGET_CLANG_arm :=
-ART_TARGET_CLANG_arm64 :=
-ART_TARGET_CLANG_mips :=
-ART_TARGET_CLANG_x86 :=
-ART_TARGET_CLANG_x86_64 :=
+ART_TARGET_CLANG := false
+ART_TARGET_CLANG_arm := false
+ART_TARGET_CLANG_arm64 := false
+ART_TARGET_CLANG_mips := false
+ART_TARGET_CLANG_x86 := false
+ART_TARGET_CLANG_x86_64 := false
 
 define set-target-local-clang-vars
     LOCAL_CLANG := $(ART_TARGET_CLANG)
@@ -200,8 +196,8 @@ art_target_non_debug_cflags := \
 
 ifeq ($(HOST_OS),linux)
   # Larger frame-size for host clang builds today
-  art_host_non_debug_cflags += -Wframe-larger-than=3000
-  art_target_non_debug_cflags += -Wframe-larger-than=1728
+#  art_host_non_debug_cflags += -Wframe-larger-than=3000
+#  art_target_non_debug_cflags += -Wframe-larger-than=1728
 endif
 
 # FIXME: upstream LLVM has a vectorizer bug that needs to be fixed
@@ -213,16 +209,16 @@ art_debug_cflags := \
   -DDYNAMIC_ANNOTATIONS_ENABLED=1 \
   -UNDEBUG
 
-ifndef LIBART_IMG_HOST_BASE_ADDRESS
-  $(error LIBART_IMG_HOST_BASE_ADDRESS unset)
-endif
+#ifndef LIBART_IMG_HOST_BASE_ADDRESS
+ # $(error LIBART_IMG_HOST_BASE_ADDRESS unset)
+#endif
 ART_HOST_CFLAGS := $(art_cflags) -DANDROID_SMP=1 -DART_BASE_ADDRESS=$(LIBART_IMG_HOST_BASE_ADDRESS)
 ART_HOST_CFLAGS += -DART_DEFAULT_INSTRUCTION_SET_FEATURES=default
 ART_HOST_CFLAGS += $(ART_DEFAULT_GC_TYPE_CFLAGS)
 
-ifndef LIBART_IMG_TARGET_BASE_ADDRESS
-  $(error LIBART_IMG_TARGET_BASE_ADDRESS unset)
-endif
+#ifndef LIBART_IMG_TARGET_BASE_ADDRESS
+ # $(error LIBART_IMG_TARGET_BASE_ADDRESS unset)
+#endif
 ART_TARGET_CFLAGS := $(art_cflags) -DART_TARGET -DART_BASE_ADDRESS=$(LIBART_IMG_TARGET_BASE_ADDRESS)
 
 ifndef LIBART_IMG_HOST_MIN_BASE_ADDRESS_DELTA
@@ -281,7 +277,7 @@ else
   endif
 endif
 # We compile with GCC 4.6 or clang on the host, both of which support -Wthread-safety.
-ART_HOST_CFLAGS += -Wthread-safety
+#ART_HOST_CFLAGS += -Wthread-safety
 
 # To use oprofile_android --callgraph, uncomment this and recompile with "mmm art -B -j16"
 # ART_TARGET_CFLAGS += -fno-omit-frame-pointer -marm -mapcs
