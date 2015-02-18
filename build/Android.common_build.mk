@@ -287,8 +287,13 @@ ART_HOST_CFLAGS += -Wthread-safety
 # ART_TARGET_CFLAGS += -fno-omit-frame-pointer -marm -mapcs
 
 # Addition CPU specific CFLAGS.
+CORTEX_A15_TYPE := \
+	cortex-a15 \
+	krait \
+	denver
+
 ifeq ($(TARGET_ARCH),arm)
-  ifneq ($(filter cortex-a15, $(TARGET_CPU_VARIANT)),)
+  ifneq ($(filter $(CORTEX_A15_TYPE), $(TARGET_CPU_VARIANT)),)
     # Fake a ARM feature for LPAE support.
     ART_TARGET_CFLAGS += -D__ARM_FEATURE_LPAE=1
   endif
