@@ -203,11 +203,9 @@ endif
 # FIXME: upstream LLVM has a vectorizer bug that needs to be fixed
 ART_TARGET_CLANG_CFLAGS_arm64 += \
   -fno-vectorize
-
+# Force non-debug always
 art_debug_cflags := \
-  -O1 \
-  -DDYNAMIC_ANNOTATIONS_ENABLED=1 \
-  -UNDEBUG
+  $(art_non_debug_cflags)
 
 #ifndef LIBART_IMG_HOST_BASE_ADDRESS
  # $(error LIBART_IMG_HOST_BASE_ADDRESS unset)
