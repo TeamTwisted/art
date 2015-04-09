@@ -178,6 +178,10 @@ class MANAGED ArtMethod FINAL : public Object {
     SetField32<false>(OFFSET_OF_OBJECT_MEMBER(ArtMethod, method_index_), new_method_index);
   }
 
+  static MemberOffset DexMethodIndexOffset() {
+    return OFFSET_OF_OBJECT_MEMBER(ArtMethod, dex_method_index_);
+  }
+
   static MemberOffset MethodIndexOffset() {
     return OFFSET_OF_OBJECT_MEMBER(ArtMethod, method_index_);
   }
@@ -209,6 +213,8 @@ class MANAGED ArtMethod FINAL : public Object {
     return OFFSET_OF_OBJECT_MEMBER(ArtMethod, dex_cache_resolved_types_);
   }
 
+  ALWAYS_INLINE ObjectArray<ArtMethod>* GetDexCacheResolvedMethods()
+      SHARED_LOCKS_REQUIRED(Locks::mutator_lock_);
   ALWAYS_INLINE ArtMethod* GetDexCacheResolvedMethod(uint16_t method_idx)
       SHARED_LOCKS_REQUIRED(Locks::mutator_lock_);
   ALWAYS_INLINE void SetDexCacheResolvedMethod(uint16_t method_idx, ArtMethod* new_method)
@@ -455,10 +461,6 @@ class MANAGED ArtMethod FINAL : public Object {
         EntryPointFromJniOffset(pointer_size), entrypoint, pointer_size);
   }
 
-  static MemberOffset GetMethodIndexOffset() {
-    return OFFSET_OF_OBJECT_MEMBER(ArtMethod, method_index_);
-  }
-
   // Is this a CalleSaveMethod or ResolutionMethod and therefore doesn't adhere to normal
   // conventions for a method of managed code. Returns false for Proxy methods.
   bool IsRuntimeMethod() SHARED_LOCKS_REQUIRED(Locks::mutator_lock_);
@@ -612,9 +614,6 @@ class MANAGED ArtMethod FINAL : public Object {
 
  private:
   ALWAYS_INLINE void CheckObjectSizeEqualsMirrorSize() SHARED_LOCKS_REQUIRED(Locks::mutator_lock_);
-
-  ALWAYS_INLINE ObjectArray<ArtMethod>* GetDexCacheResolvedMethods()
-      SHARED_LOCKS_REQUIRED(Locks::mutator_lock_);
 
   ALWAYS_INLINE ObjectArray<Class>* GetDexCacheResolvedTypes()
       SHARED_LOCKS_REQUIRED(Locks::mutator_lock_);
