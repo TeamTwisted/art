@@ -42,6 +42,23 @@
   V(MathMaxFloatFloat, kStatic) \
   V(MathMaxLongLong, kStatic) \
   V(MathMaxIntInt, kStatic) \
+  V(MathCos, kStatic) \
+  V(MathSin, kStatic) \
+  V(MathAcos, kStatic) \
+  V(MathAsin, kStatic) \
+  V(MathAtan, kStatic) \
+  V(MathAtan2, kStatic) \
+  V(MathCbrt, kStatic) \
+  V(MathCosh, kStatic) \
+  V(MathExp, kStatic) \
+  V(MathExpm1, kStatic) \
+  V(MathHypot, kStatic) \
+  V(MathLog, kStatic) \
+  V(MathLog10, kStatic) \
+  V(MathNextAfter, kStatic) \
+  V(MathSinh, kStatic) \
+  V(MathTan, kStatic) \
+  V(MathTanh, kStatic) \
   V(MathSqrt, kStatic) \
   V(MathCeil, kStatic) \
   V(MathFloor, kStatic) \
