@@ -20,7 +20,6 @@
 #include "heap.h"
 
 #include "base/time_utils.h"
-#include "debugger.h"
 #include "gc/accounting/card_table-inl.h"
 #include "gc/collector/semi_space.h"
 #include "gc/space/bump_pointer_space-inl.h"
