@@ -48,6 +48,11 @@ $(info Disabling ART_BUILD_HOST_DEBUG)
 endif
 
 #
+# Enable Optimized Compiler
+#
+ART_USE_OPTIMIZING_COMPILER := true
+
+#
 # Used to enable JIT
 #
 ART_JIT := false
