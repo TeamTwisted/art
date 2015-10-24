@@ -70,14 +70,24 @@ ART_TARGET_CFLAGS :=
 
 # Host.
 ART_HOST_CLANG := false
+ifneq ($(WITHOUT_HOST_CLANG),true)
+  # By default, host builds use clang for better warnings.
+  ART_HOST_CLANG := true
+endif
+
 # Clang on the target. Target builds use GCC by default.
+ifneq ($(USE_CLANG_PLATFORM_BUILD),)
+ART_TARGET_CLANG := $(USE_CLANG_PLATFORM_BUILD)
+else
 ART_TARGET_CLANG := false
+endif
+# b/25130937
 ART_TARGET_CLANG_arm := false
-ART_TARGET_CLANG_arm64 := false
-ART_TARGET_CLANG_mips := false
-ART_TARGET_CLANG_mips64 := false
-ART_TARGET_CLANG_x86 := false
-ART_TARGET_CLANG_x86_64 := false
+ART_TARGET_CLANG_arm64 :=
+ART_TARGET_CLANG_mips :=
+ART_TARGET_CLANG_mips64 :=
+ART_TARGET_CLANG_x86 :=
+ART_TARGET_CLANG_x86_64 :=
 
 define set-target-local-clang-vars
     LOCAL_CLANG := $(ART_TARGET_CLANG)
@@ -225,6 +235,17 @@ art_debug_cflags := \
 art_host_non_debug_cflags := $(art_non_debug_cflags)
 art_target_non_debug_cflags := $(art_non_debug_cflags)
 
+ifeq ($(HOST_OS),linux)
+  # Larger frame-size for host clang builds today
+  ifneq ($(ART_COVERAGE),true)
+    ifneq ($(NATIVE_COVERAGE),true)
+      ifndef SANITIZE_HOST
+        art_host_non_debug_cflags += -Wframe-larger-than=2700
+      endif
+      art_target_non_debug_cflags += -Wframe-larger-than=1728
+    endif
+  endif
+endif
 
 ifndef LIBART_IMG_HOST_BASE_ADDRESS
   $(error LIBART_IMG_HOST_BASE_ADDRESS unset)
