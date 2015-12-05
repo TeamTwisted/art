@@ -326,10 +326,13 @@ class X86_64Assembler FINAL : public Assembler {
   void movq(CpuRegister dst, CpuRegister src);
   void movl(CpuRegister dst, CpuRegister src);
 
+  void movntl(const Address& dst, CpuRegister src);
+  void movntq(const Address& dst, CpuRegister src);
+
   void movq(CpuRegister dst, const Address& src);
   void movl(CpuRegister dst, const Address& src);
   void movq(const Address& dst, CpuRegister src);
-  void movq(const Address& dst, const Immediate& src);
+  void movq(const Address& dst, const Immediate& imm);
   void movl(const Address& dst, CpuRegister src);
   void movl(const Address& dst, const Immediate& imm);
 
@@ -539,6 +542,7 @@ class X86_64Assembler FINAL : public Assembler {
 
   void imull(CpuRegister dst, CpuRegister src);
   void imull(CpuRegister reg, const Immediate& imm);
+  void imull(CpuRegister dst, CpuRegister src, const Immediate& imm);
   void imull(CpuRegister reg, const Address& address);
 
   void imulq(CpuRegister src);

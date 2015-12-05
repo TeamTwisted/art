@@ -194,6 +194,21 @@ void X86_64Assembler::movl(const Address& dst, const Immediate& imm) {
   EmitImmediate(imm);
 }
 
+void X86_64Assembler::movntl(const Address& dst, CpuRegister src) {
+  AssemblerBuffer::EnsureCapacity ensured(&buffer_);
+  EmitOptionalRex32(src, dst);
+  EmitUint8(0x0F);
+  EmitUint8(0xC3);
+  EmitOperand(src.LowBits(), dst);
+}
+
+void X86_64Assembler::movntq(const Address& dst, CpuRegister src) {
+  AssemblerBuffer::EnsureCapacity ensured(&buffer_);
+  EmitRex64(src, dst);
+  EmitUint8(0x0F);
+  EmitUint8(0xC3);
+  EmitOperand(src.LowBits(), dst);
+}
 
 void X86_64Assembler::cmov(Condition c, CpuRegister dst, CpuRegister src) {
   cmov(c, dst, src, true);
@@ -1672,25 +1687,30 @@ void X86_64Assembler::imull(CpuRegister dst, CpuRegister src) {
   EmitOperand(dst.LowBits(), Operand(src));
 }
 
-void X86_64Assembler::imull(CpuRegister reg, const Immediate& imm) {
+void X86_64Assembler::imull(CpuRegister dst, CpuRegister src, const Immediate& imm) {
   AssemblerBuffer::EnsureCapacity ensured(&buffer_);
   CHECK(imm.is_int32());  // imull only supports 32b immediate.
 
-  EmitOptionalRex32(reg, reg);
+  EmitOptionalRex32(dst, src);
 
   // See whether imm can be represented as a sign-extended 8bit value.
   int32_t v32 = static_cast<int32_t>(imm.value());
   if (IsInt<8>(v32)) {
     // Sign-extension works.
     EmitUint8(0x6B);
-    EmitOperand(reg.LowBits(), Operand(reg));
+    EmitOperand(dst.LowBits(), Operand(src));
     EmitUint8(static_cast<uint8_t>(v32 & 0xFF));
   } else {
     // Not representable, use full immediate.
     EmitUint8(0x69);
-    EmitOperand(reg.LowBits(), Operand(reg));
+    EmitOperand(dst.LowBits(), Operand(src));
     EmitImmediate(imm);
   }
+}
+
+
+void X86_64Assembler::imull(CpuRegister reg, const Immediate& imm) {
+  imull(reg, reg, imm);
 }
 
 

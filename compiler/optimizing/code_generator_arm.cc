@@ -2417,6 +2417,9 @@ void InstructionCodeGeneratorARM::VisitDivZeroCheck(HDivZeroCheck* instruction) 
   Location value = locations->InAt(0);
 
   switch (instruction->GetType()) {
+    case Primitive::kPrimByte:
+    case Primitive::kPrimChar:
+    case Primitive::kPrimShort:
     case Primitive::kPrimInt: {
       if (value.IsRegister()) {
         __ cmp(value.AsRegister<Register>(), ShifterOperand(0));

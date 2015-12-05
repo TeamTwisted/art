@@ -2094,7 +2094,12 @@ void LocationsBuilderX86::VisitMul(HMul* mul) {
     case Primitive::kPrimInt:
       locations->SetInAt(0, Location::RequiresRegister());
       locations->SetInAt(1, Location::Any());
-      locations->SetOut(Location::SameAsFirstInput());
+      if (mul->InputAt(1)->IsIntConstant()) {
+        // Can use 3 operand multiply.
+        locations->SetOut(Location::RequiresRegister(), Location::kNoOutputOverlap);
+      } else {
+        locations->SetOut(Location::SameAsFirstInput());
+      }
       break;
     case Primitive::kPrimLong: {
       locations->SetInAt(0, Location::RequiresRegister());
@@ -2122,21 +2127,24 @@ void InstructionCodeGeneratorX86::VisitMul(HMul* mul) {
   LocationSummary* locations = mul->GetLocations();
   Location first = locations->InAt(0);
   Location second = locations->InAt(1);
-  DCHECK(first.Equals(locations->Out()));
+  Location out = locations->Out();
 
   switch (mul->GetResultType()) {
-    case Primitive::kPrimInt: {
-      if (second.IsRegister()) {
+    case Primitive::kPrimInt:
+      // The constant may have ended up in a register, so test explicitly to avoid
+      // problems where the output may not be the same as the first operand.
+      if (mul->InputAt(1)->IsIntConstant()) {
+        Immediate imm(mul->InputAt(1)->AsIntConstant()->GetValue());
+        __ imull(out.AsRegister<Register>(), first.AsRegister<Register>(), imm);
+      } else if (second.IsRegister()) {
+        DCHECK(first.Equals(out));
         __ imull(first.AsRegister<Register>(), second.AsRegister<Register>());
-      } else if (second.IsConstant()) {
-        Immediate imm(second.GetConstant()->AsIntConstant()->GetValue());
-        __ imull(first.AsRegister<Register>(), imm);
       } else {
         DCHECK(second.IsStackSlot());
+        DCHECK(first.Equals(out));
         __ imull(first.AsRegister<Register>(), Address(ESP, second.GetStackIndex()));
       }
       break;
-    }
 
     case Primitive::kPrimLong: {
       Register in1_hi = first.AsRegisterPairHigh<Register>();
@@ -2675,6 +2683,9 @@ void LocationsBuilderX86::VisitDivZeroCheck(HDivZeroCheck* instruction) {
   LocationSummary* locations =
       new (GetGraph()->GetArena()) LocationSummary(instruction, LocationSummary::kNoCall);
   switch (instruction->GetType()) {
+    case Primitive::kPrimByte:
+    case Primitive::kPrimChar:
+    case Primitive::kPrimShort:
     case Primitive::kPrimInt: {
       locations->SetInAt(0, Location::Any());
       break;
@@ -2702,6 +2713,9 @@ void InstructionCodeGeneratorX86::VisitDivZeroCheck(HDivZeroCheck* instruction) 
   Location value = locations->InAt(0);
 
   switch (instruction->GetType()) {
+    case Primitive::kPrimByte:
+    case Primitive::kPrimChar:
+    case Primitive::kPrimShort:
     case Primitive::kPrimInt: {
       if (value.IsRegister()) {
         __ testl(value.AsRegister<Register>(), value.AsRegister<Register>());
@@ -4207,7 +4221,11 @@ void ParallelMoveResolverX86::EmitSwap(size_t index) {
   Location destination = move->GetDestination();
 
   if (source.IsRegister() && destination.IsRegister()) {
-    __ xchgl(destination.AsRegister<Register>(), source.AsRegister<Register>());
+    // Use XOR swap algorithm to avoid serializing XCHG instruction or using a temporary.
+    DCHECK_NE(destination.AsRegister<Register>(), source.AsRegister<Register>());
+    __ xorl(destination.AsRegister<Register>(), source.AsRegister<Register>());
+    __ xorl(source.AsRegister<Register>(), destination.AsRegister<Register>());
+    __ xorl(destination.AsRegister<Register>(), source.AsRegister<Register>());
   } else if (source.IsRegister() && destination.IsStackSlot()) {
     Exchange(source.AsRegister<Register>(), destination.GetStackIndex());
   } else if (source.IsStackSlot() && destination.IsRegister()) {

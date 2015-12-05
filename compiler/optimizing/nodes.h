@@ -50,6 +50,7 @@ class LiveInterval;
 class LocationSummary;
 class SlowPathCode;
 class SsaBuilder;
+class HExtendedLoopInformation;
 
 static const int kDefaultNumberOfBlocks = 8;
 static const int kDefaultNumberOfSuccessors = 2;
@@ -390,7 +391,8 @@ class HLoopInformation : public ArenaObject<kArenaAllocMisc> {
         suspend_check_(nullptr),
         back_edges_(graph->GetArena(), kDefaultNumberOfBackEdges),
         // Make bit vector growable, as the number of blocks may change.
-        blocks_(graph->GetArena(), graph->GetBlocks().Size(), true) {}
+        blocks_(graph->GetArena(), graph->GetBlocks().Size(), true),
+        extended_loop_info_(nullptr) {}
 
   HBasicBlock* GetHeader() const {
     return header_;
@@ -466,6 +468,14 @@ class HLoopInformation : public ArenaObject<kArenaAllocMisc> {
   void Add(HBasicBlock* block);
   void Remove(HBasicBlock* block);
 
+  void SetExtendedLoopInformation(HExtendedLoopInformation *extended_loop_info) {
+    extended_loop_info_ = extended_loop_info;
+  }
+
+  HExtendedLoopInformation* GetExtendedLoopInformation() {
+    return extended_loop_info_;
+  }
+
  private:
   // Internal recursive implementation of `Populate`.
   void PopulateRecursive(HBasicBlock* block);
@@ -474,6 +484,8 @@ class HLoopInformation : public ArenaObject<kArenaAllocMisc> {
   HSuspendCheck* suspend_check_;
   GrowableArray<HBasicBlock*> back_edges_;
   ArenaBitVector blocks_;
+
+  HExtendedLoopInformation* extended_loop_info_;
 
   DISALLOW_COPY_AND_ASSIGN(HLoopInformation);
 };
@@ -2801,6 +2813,8 @@ class HDivZeroCheck : public HExpression<1> {
     SetRawInputAt(0, value);
   }
 
+  Primitive::Type GetType() const OVERRIDE { return InputAt(0)->GetType(); }
+
   bool CanBeMoved() const OVERRIDE { return true; }
 
   bool InstructionDataEquals(HInstruction* other) const OVERRIDE {
@@ -3128,17 +3142,25 @@ class HNullCheck : public HExpression<1> {
 
 class FieldInfo : public ValueObject {
  public:
-  FieldInfo(MemberOffset field_offset, Primitive::Type field_type, bool is_volatile)
-      : field_offset_(field_offset), field_type_(field_type), is_volatile_(is_volatile) {}
+  FieldInfo(MemberOffset field_offset,
+            Primitive::Type field_type,
+            bool is_volatile,
+            uint32_t index)
+      : field_offset_(field_offset),
+        field_type_(field_type),
+        is_volatile_(is_volatile),
+        index_(index) {}
 
   MemberOffset GetFieldOffset() const { return field_offset_; }
   Primitive::Type GetFieldType() const { return field_type_; }
+  uint32_t GetFieldIndex() const { return index_; }
   bool IsVolatile() const { return is_volatile_; }
 
  private:
   const MemberOffset field_offset_;
   const Primitive::Type field_type_;
   const bool is_volatile_;
+  uint32_t index_;
 };
 
 class HInstanceFieldGet : public HExpression<1> {
@@ -3148,11 +3170,22 @@ class HInstanceFieldGet : public HExpression<1> {
                     MemberOffset field_offset,
                     bool is_volatile)
       : HExpression(field_type, SideEffects::DependsOnSomething()),
-        field_info_(field_offset, field_type, is_volatile) {
+        field_info_(field_offset, field_type, is_volatile, 0) {
+    SetRawInputAt(0, value);
+  }
+
+  HInstanceFieldGet(HInstruction* value,
+                    Primitive::Type field_type,
+                    MemberOffset field_offset,
+                    bool is_volatile,
+                    uint32_t field_idx)
+      : HExpression(field_type, SideEffects::DependsOnSomething()),
+        field_info_(field_offset, field_type, is_volatile, field_idx) {
     SetRawInputAt(0, value);
   }
 
   bool CanBeMoved() const OVERRIDE { return !IsVolatile(); }
+  // TODO: add CanBeNull for accessing a first page field from cannot-be-null object
 
   bool InstructionDataEquals(HInstruction* other) const OVERRIDE {
     HInstanceFieldGet* other_get = other->AsInstanceFieldGet();
@@ -3168,9 +3201,11 @@ class HInstanceFieldGet : public HExpression<1> {
   }
 
   const FieldInfo& GetFieldInfo() const { return field_info_; }
+  uint32_t GetFieldIndex() const { return field_info_.GetFieldIndex(); }
   MemberOffset GetFieldOffset() const { return field_info_.GetFieldOffset(); }
   Primitive::Type GetFieldType() const { return field_info_.GetFieldType(); }
   bool IsVolatile() const { return field_info_.IsVolatile(); }
+  bool IsPrimitiveField() const { return (GetFieldType() != Primitive::kPrimNot); }
 
   DECLARE_INSTRUCTION(InstanceFieldGet);
 
@@ -3188,20 +3223,35 @@ class HInstanceFieldSet : public HTemplateInstruction<2> {
                     MemberOffset field_offset,
                     bool is_volatile)
       : HTemplateInstruction(SideEffects::ChangesSomething()),
-        field_info_(field_offset, field_type, is_volatile) {
+        field_info_(field_offset, field_type, is_volatile, 0) {
     SetRawInputAt(0, object);
     SetRawInputAt(1, value);
   }
 
+  HInstanceFieldSet(HInstruction* object,
+                    HInstruction* value,
+                    Primitive::Type field_type,
+                    MemberOffset field_offset,
+                    bool is_volatile,
+                    uint32_t field_idx)
+      : HTemplateInstruction(SideEffects::ChangesSomething()),
+        field_info_(field_offset, field_type, is_volatile, field_idx) {
+    SetRawInputAt(0, object);
+    SetRawInputAt(1, value);
+  }
+
+  // TODO: add CanBeNull for accessing a first page field from cannot-be-null object
   bool CanDoImplicitNullCheckOn(HInstruction* obj) const OVERRIDE {
     return (obj == InputAt(0)) && GetFieldOffset().Uint32Value() < kPageSize;
   }
 
   const FieldInfo& GetFieldInfo() const { return field_info_; }
+  uint32_t GetFieldIndex() const { return field_info_.GetFieldIndex(); }
   MemberOffset GetFieldOffset() const { return field_info_.GetFieldOffset(); }
   Primitive::Type GetFieldType() const { return field_info_.GetFieldType(); }
   bool IsVolatile() const { return field_info_.IsVolatile(); }
   HInstruction* GetValue() const { return InputAt(1); }
+  bool IsPrimitiveField() const { return (GetFieldType() != Primitive::kPrimNot); }
 
   DECLARE_INSTRUCTION(InstanceFieldSet);
 
@@ -3566,7 +3616,17 @@ class HStaticFieldGet : public HExpression<1> {
                   MemberOffset field_offset,
                   bool is_volatile)
       : HExpression(field_type, SideEffects::DependsOnSomething()),
-        field_info_(field_offset, field_type, is_volatile) {
+        field_info_(field_offset, field_type, is_volatile, 0) {
+    SetRawInputAt(0, cls);
+  }
+
+  HStaticFieldGet(HInstruction* cls,
+                  Primitive::Type field_type,
+                  MemberOffset field_offset,
+                  bool is_volatile,
+                  uint32_t field_idx)
+      : HExpression(field_type, SideEffects::DependsOnSomething()),
+        field_info_(field_offset, field_type, is_volatile, field_idx) {
     SetRawInputAt(0, cls);
   }
 
@@ -3583,9 +3643,11 @@ class HStaticFieldGet : public HExpression<1> {
   }
 
   const FieldInfo& GetFieldInfo() const { return field_info_; }
+  uint32_t GetFieldIndex() const { return field_info_.GetFieldIndex(); }
   MemberOffset GetFieldOffset() const { return field_info_.GetFieldOffset(); }
   Primitive::Type GetFieldType() const { return field_info_.GetFieldType(); }
   bool IsVolatile() const { return field_info_.IsVolatile(); }
+  bool IsPrimitiveField() const { return (GetFieldType() != Primitive::kPrimNot); }
 
   DECLARE_INSTRUCTION(StaticFieldGet);
 
@@ -3603,15 +3665,29 @@ class HStaticFieldSet : public HTemplateInstruction<2> {
                   MemberOffset field_offset,
                   bool is_volatile)
       : HTemplateInstruction(SideEffects::ChangesSomething()),
-        field_info_(field_offset, field_type, is_volatile) {
+        field_info_(field_offset, field_type, is_volatile, 0) {
+    SetRawInputAt(0, cls);
+    SetRawInputAt(1, value);
+  }
+
+  HStaticFieldSet(HInstruction* cls,
+                  HInstruction* value,
+                  Primitive::Type field_type,
+                  MemberOffset field_offset,
+                  bool is_volatile,
+                  uint32_t field_idx)
+      : HTemplateInstruction(SideEffects::ChangesSomething()),
+        field_info_(field_offset, field_type, is_volatile, field_idx) {
     SetRawInputAt(0, cls);
     SetRawInputAt(1, value);
   }
 
   const FieldInfo& GetFieldInfo() const { return field_info_; }
+  uint32_t GetFieldIndex() const { return field_info_.GetFieldIndex(); }
   MemberOffset GetFieldOffset() const { return field_info_.GetFieldOffset(); }
   Primitive::Type GetFieldType() const { return field_info_.GetFieldType(); }
   bool IsVolatile() const { return field_info_.IsVolatile(); }
+  bool IsPrimitiveField() const { return (GetFieldType() != Primitive::kPrimNot); }
 
   HInstruction* GetValue() const { return InputAt(1); }
 

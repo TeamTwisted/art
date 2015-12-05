@@ -19,6 +19,12 @@
 
 #include "compiler.h"
 
+#ifdef QC_STRONG
+#define QC_WEAK
+#else
+#define QC_WEAK __attribute__((weak))
+#endif
+
 namespace art {
 
 class Compiler;
@@ -64,6 +70,8 @@ class QuickCompiler : public Compiler {
   const PassManager* GetPostOptPassManager() const {
     return post_opt_pass_manager_.get();
   }
+
+  bool CheckMoreConditions(CompilationUnit* cu) const QC_WEAK;
 
  protected:
   explicit QuickCompiler(CompilerDriver* driver);

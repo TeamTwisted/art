@@ -200,15 +200,23 @@ static jint trampoline_Java_Main_testSignal(JNIEnv*, jclass) {
 #if !defined(__APPLE__) && !defined(__mips__)
   tmp.sa_restorer = nullptr;
 #endif
-  sigaction(SIGSEGV, &tmp, nullptr);
 
-#if defined(__arm__) || defined(__i386__) || defined(__x86_64__) || defined(__aarch64__)
-  // On supported architectures we cause a real SEGV.
+  // Test segv
+  sigaction(SIGSEGV, &tmp, nullptr);
+#if defined(__arm__) || defined(__i386__) || defined(__aarch64__)
   *go_away_compiler = 'a';
+#elif defined(__x86_64__)
+  // Cause a SEGV using an instruction known to be 3 bytes long
+  asm volatile("movl $0, %%eax;" "movb $1, (%%eax);" : : : "%eax");
 #else
   // On other architectures we simulate SEGV.
   kill(getpid(), SIGSEGV);
 #endif
+
+  // Test sigill
+  sigaction(SIGILL, &tmp, nullptr);
+  kill(getpid(), SIGILL);
+
   return 1234;
 }
 
@@ -385,27 +393,29 @@ extern "C" bool nb_is_compatible(uint32_t bridge_version ATTRIBUTE_UNUSED) {
 // 004-SignalTest.
 static bool nb_signalhandler(int sig, siginfo_t* info ATTRIBUTE_UNUSED, void* context) {
   printf("NB signal handler with signal %d.\n", sig);
+  if (sig == SIGSEGV) {
 #if defined(__arm__)
-  struct ucontext *uc = reinterpret_cast<struct ucontext*>(context);
-  struct sigcontext *sc = reinterpret_cast<struct sigcontext*>(&uc->uc_mcontext);
-  sc->arm_pc += 2;          // Skip instruction causing segv.
+    struct ucontext *uc = reinterpret_cast<struct ucontext*>(context);
+    struct sigcontext *sc = reinterpret_cast<struct sigcontext*>(&uc->uc_mcontext);
+    sc->arm_pc += 2;          // Skip instruction causing segv & sigill.
 #elif defined(__aarch64__)
-  struct ucontext *uc = reinterpret_cast<struct ucontext*>(context);
-  struct sigcontext *sc = reinterpret_cast<struct sigcontext*>(&uc->uc_mcontext);
-  sc->pc += 4;          // Skip instruction causing segv.
+    struct ucontext *uc = reinterpret_cast<struct ucontext*>(context);
+    struct sigcontext *sc = reinterpret_cast<struct sigcontext*>(&uc->uc_mcontext);
+    sc->pc += 4;          // Skip instruction causing segv & sigill.
 #elif defined(__i386__) || defined(__x86_64__)
-  struct ucontext *uc = reinterpret_cast<struct ucontext*>(context);
-  uc->CTX_EIP += 3;
+    struct ucontext *uc = reinterpret_cast<struct ucontext*>(context);
+    uc->CTX_EIP += 3;
 #else
-  UNUSED(context);
+    UNUSED(context);
 #endif
+  }
   // We handled this...
   return true;
 }
 
 static ::android::NativeBridgeSignalHandlerFn native_bridge_get_signal_handler(int signal) {
-  // Only test segfault handler.
-  if (signal == SIGSEGV) {
+  // Test segv for already claimed signal, and sigill for not claimed signal
+  if ((signal == SIGSEGV) || (signal == SIGILL)) {
     return &nb_signalhandler;
   }
   return nullptr;

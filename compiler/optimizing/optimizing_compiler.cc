@@ -54,8 +54,23 @@
 #include "ssa_phi_elimination.h"
 #include "ssa_liveness_analysis.h"
 #include "utils/assembler.h"
+#include "dex/quick/quick_compiler.h"
 
 namespace art {
+
+class OptimizingCompiler;
+
+// fast compile path
+CompiledMethod* TryFastCompile(CompilerDriver* driver,
+                               Compiler* compiler,
+                               const DexFile::CodeItem* code_item,
+                               uint32_t access_flags,
+                               InvokeType invoke_type,
+                               uint16_t class_def_idx,
+                               uint32_t method_idx,
+                               jobject jclass_loader,
+                               const DexFile& dex_file) __attribute__((weak));
+
 
 /**
  * Used by the code generator, to allocate the code in a vector.
@@ -262,6 +277,8 @@ void OptimizingCompiler::Init() {
       << "Graph visualizer requires the compiler to run single-threaded. "
       << "Invoke the compiler with '-j1'.";
     visualizer_output_.reset(new std::ofstream(cfg_file_name));
+    if (visualizer_output_->fail())
+        LOG(INFO) << "can't create cfg file " << cfg_file_name;
   }
   if (driver->GetDumpStats()) {
     compilation_stats_.reset(new OptimizingCompilerStats());
@@ -301,11 +318,26 @@ static bool CanOptimize(const DexFile::CodeItem& code_item) {
   return code_item.tries_size_ == 0;
 }
 
+
+HOptimization* GetMoreOptimizing(HGraph*,
+                                 const DexCompilationUnit&,
+                                 CompilerDriver*,
+                                 OptimizingCompilerStats*) __attribute__((weak));
+HOptimization* GetMoreOptimizing(HGraph*,
+                                 const DexCompilationUnit&,
+                                 CompilerDriver*,
+                                 OptimizingCompilerStats*)
+{
+  return nullptr;
+}
+
 static void RunOptimizations(HOptimization* optimizations[],
                              size_t length,
                              PassInfoPrinter* pass_info_printer) {
   for (size_t i = 0; i < length; ++i) {
     HOptimization* optimization = optimizations[i];
+    if (optimization == nullptr)
+      continue;
     {
       PassInfo pass_info(optimization->GetPassName(), pass_info_printer);
       optimization->Run();
@@ -321,48 +353,55 @@ static void RunOptimizations(HGraph* graph,
                              const DexCompilationUnit& dex_compilation_unit,
                              PassInfoPrinter* pass_info_printer,
                              StackHandleScopeCollection* handles) {
-  HDeadCodeElimination dce1(graph, stats,
-                            HDeadCodeElimination::kInitialDeadCodeEliminationPassName);
-  HDeadCodeElimination dce2(graph, stats,
-                            HDeadCodeElimination::kFinalDeadCodeEliminationPassName);
-  HConstantFolding fold1(graph);
-  InstructionSimplifier simplify1(graph, stats);
-  HBooleanSimplifier boolean_simplify(graph);
+  ArenaAllocator* arena = graph->GetArena();
+  HDeadCodeElimination* dce1 = new (arena) HDeadCodeElimination(
+      graph, stats, HDeadCodeElimination::kInitialDeadCodeEliminationPassName);
+  HDeadCodeElimination* dce2 = new (arena) HDeadCodeElimination(
+      graph, stats, HDeadCodeElimination::kFinalDeadCodeEliminationPassName);
+  HConstantFolding* fold1 = new (arena) HConstantFolding(graph);
+  InstructionSimplifier* simplify1 = new (arena) InstructionSimplifier(graph, stats);
+  HBooleanSimplifier* boolean_simplify = new (arena) HBooleanSimplifier(graph);
 
-  HInliner inliner(graph, dex_compilation_unit, dex_compilation_unit, driver, stats);
+  HInliner* inliner = new (arena) HInliner(
+      graph, dex_compilation_unit, dex_compilation_unit, driver, stats);
 
-  HConstantFolding fold2(graph, "constant_folding_after_inlining");
-  SideEffectsAnalysis side_effects(graph);
-  GVNOptimization gvn(graph, side_effects);
-  LICM licm(graph, side_effects);
-  BoundsCheckElimination bce(graph);
-  ReferenceTypePropagation type_propagation(graph, dex_file, dex_compilation_unit, handles);
-  InstructionSimplifier simplify2(graph, stats, "instruction_simplifier_after_types");
-  InstructionSimplifier simplify3(graph, stats, "instruction_simplifier_before_codegen");
+  HConstantFolding* fold2 = new (arena) HConstantFolding(graph, "constant_folding_after_inlining");
+  SideEffectsAnalysis* side_effects = new (arena) SideEffectsAnalysis(graph);
+  GVNOptimization* gvn = new (arena) GVNOptimization(graph, *side_effects);
+  LICM* licm = new (arena) LICM(graph, *side_effects);
+  BoundsCheckElimination* bce = new (arena) BoundsCheckElimination(graph);
+  ReferenceTypePropagation* type_propagation =
+      new (arena) ReferenceTypePropagation(graph, dex_file, dex_compilation_unit, handles);
+  InstructionSimplifier* simplify2 = new (arena) InstructionSimplifier(
+      graph, stats, "instruction_simplifier_after_types");
 
-  IntrinsicsRecognizer intrinsics(graph, dex_compilation_unit.GetDexFile(), driver);
+  InstructionSimplifier* simplify3 = new (arena) InstructionSimplifier(
+      graph, stats, "instruction_simplifier_before_codegen");
+  IntrinsicsRecognizer* intrinsics = new (arena) IntrinsicsRecognizer(graph,
+                                                    dex_compilation_unit.GetDexFile(), driver);
 
   HOptimization* optimizations[] = {
-    &intrinsics,
-    &fold1,
-    &simplify1,
-    &dce1,
-    &inliner,
+    intrinsics,
+    fold1,
+    simplify1,
+    dce1,
+    inliner,
+    GetMoreOptimizing(graph, dex_compilation_unit, driver, stats),
     // BooleanSimplifier depends on the InstructionSimplifier removing redundant
     // suspend checks to recognize empty blocks.
-    &boolean_simplify,
-    &fold2,
-    &side_effects,
-    &gvn,
-    &licm,
-    &bce,
-    &type_propagation,
-    &simplify2,
-    &dce2,
+    boolean_simplify,
+    fold2,
+    side_effects,
+    gvn,
+    licm,
+    bce,
+    type_propagation,
+    simplify2,
+    dce2,
     // The codegen has a few assumptions that only the instruction simplifier can
     // satisfy. For example, the code generator does not expect to see a
     // HTypeConversion from a type to the same type.
-    &simplify3,
+    simplify3,
   };
 
   RunOptimizations(optimizations, arraysize(optimizations), pass_info_printer);
@@ -627,6 +666,13 @@ CompiledMethod* OptimizingCompiler::Compile(const DexFile::CodeItem* code_item,
   CompiledMethod* method = nullptr;
   if (compiler_driver->IsMethodVerifiedWithoutFailures(method_idx, class_def_idx, dex_file) &&
       !compiler_driver->GetVerifiedMethod(&dex_file, method_idx)->HasRuntimeThrow()) {
+     // try fast compile before going into optimizing compiler
+     method = TryFastCompile(compiler_driver, delegate_.get(), code_item, access_flags, invoke_type,
+                             class_def_idx, method_idx, jclass_loader, dex_file);
+
+      if (method != nullptr) {
+        return method;
+      }
      method = TryCompile(code_item, access_flags, invoke_type, class_def_idx,
                          method_idx, jclass_loader, dex_file);
   } else {
@@ -656,6 +702,20 @@ Compiler* CreateOptimizingCompiler(CompilerDriver* driver) {
 bool IsCompilingWithCoreImage() {
   const std::string& image = Runtime::Current()->GetImageLocation();
   return EndsWith(image, "core.art") || EndsWith(image, "core-optimizing.art");
+}
+
+// fast compile path
+CompiledMethod* TryFastCompile(CompilerDriver*,
+                               Compiler*,
+                               const DexFile::CodeItem*,
+                               uint32_t,
+                               InvokeType,
+                               uint16_t,
+                               uint32_t,
+                               jobject,
+                               const DexFile&) {
+
+  return nullptr;
 }
 
 }  // namespace art
