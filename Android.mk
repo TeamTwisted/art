@@ -33,7 +33,7 @@ endif
 
 # Don't bother with tests unless there is a test-art*, build-art*, or related target.
 art_test_bother := false
-ifneq (,$(filter %tests test-art% valgrind-test-art% build-art%,$(MAKECMDGOALS)))
+ifneq (,$(filter tests test-art% valgrind-test-art% build-art% checkbuild,$(MAKECMDGOALS)))
   art_test_bother := true
 endif
 
@@ -85,6 +85,7 @@ include $(art_path)/imgdiag/Android.mk
 include $(art_path)/patchoat/Android.mk
 include $(art_path)/dalvikvm/Android.mk
 include $(art_path)/tools/Android.mk
+include $(art_path)/tools/ahat/Android.mk
 include $(art_path)/tools/dexfuzz/Android.mk
 include $(art_path)/sigchainlib/Android.mk
 

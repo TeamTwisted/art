@@ -242,8 +242,11 @@ ifeq ($(HOST_OS),linux)
   # Larger frame-size for host clang builds today
   ifneq ($(ART_COVERAGE),true)
     ifneq ($(NATIVE_COVERAGE),true)
-      ifndef SANITIZE_HOST
-        art_host_non_debug_cflags += -Wframe-larger-than=2700
+      art_host_non_debug_cflags += -Wframe-larger-than=2700
+      ifdef SANITIZE_TARGET
+        art_target_non_debug_cflags += -Wframe-larger-than=6400
+      else
+        art_target_non_debug_cflags += -Wframe-larger-than=1728
       endif
       art_target_non_debug_cflags += -Wframe-larger-than=1728
     endif
