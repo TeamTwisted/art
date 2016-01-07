@@ -1064,8 +1064,9 @@ void ThreadList::SuspendAllDaemonThreads() {
   }
   // Give the threads a chance to suspend, complaining if they're slow.
   bool have_complained = false;
-  for (int i = 0; i < 10; ++i) {
-    usleep(200 * 1000);
+  static constexpr size_t kTimeoutMicroseconds = 200 * 1000;
+  static constexpr size_t kSleepMicroseconds = 1000;
+  for (size_t i = 0; i < kTimeoutMicroseconds / kSleepMicroseconds; ++i) {
     bool all_suspended = true;
     for (const auto& thread : list_) {
       if (thread != self && thread->GetState() == kRunnable) {
@@ -1079,8 +1080,9 @@ void ThreadList::SuspendAllDaemonThreads() {
     if (all_suspended) {
       return;
     }
+    usleep(kSleepMicroseconds);
   }
-  LOG(ERROR) << "suspend all daemons failed";
+  LOG(ERROR) << "timed out suspending all daemon threads";
 }
 void ThreadList::Register(Thread* self) {
   DCHECK_EQ(self, Thread::Current());
