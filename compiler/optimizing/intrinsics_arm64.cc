@@ -881,7 +881,11 @@ static void GenCas(LocationSummary* locations, Primitive::Type type, CodeGenerat
     __ Stlxr(tmp_32, value, MemOperand(tmp_ptr));
     __ Cbnz(tmp_32, &loop_head);
   } else {
-    __ Dmb(InnerShareable, BarrierWrites);
+    // Emit a `Dmb(InnerShareable, BarrierAll)` (DMB ISH) instruction
+    // instead of a `Dmb(InnerShareable, BarrierWrites)` (DMB ISHST)
+    // one, as the latter allows a preceding load to be delayed past
+    // the STXR instruction below.
+    __ Dmb(InnerShareable, BarrierAll);
     __ Bind(&loop_head);
     __ Ldxr(tmp_value, MemOperand(tmp_ptr));
     __ Cmp(tmp_value, expected);
