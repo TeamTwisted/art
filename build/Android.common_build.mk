@@ -186,7 +186,6 @@ art_cflags := \
   -std=gnu++11 \
   -ggdb3 \
   -Wall \
-  -Werror \
   -Wextra \
   -Wstrict-aliasing \
   -fstrict-aliasing \
@@ -239,9 +238,9 @@ ifeq ($(HOST_OS),linux)
   ifneq ($(ART_COVERAGE),true)
     ifneq ($(NATIVE_COVERAGE),true)
       ifndef SANITIZE_HOST
-        art_host_non_debug_cflags += -Wframe-larger-than=2700
+        art_host_non_debug_cflags +=
       endif
-      art_target_non_debug_cflags += -Wframe-larger-than=1728
+      art_target_non_debug_cflags +=
     endif
   endif
 endif
